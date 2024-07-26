@@ -1,23 +1,33 @@
 import os
 import epdb
 import time
-import inspect
+import uuid
 import multiprocessing
 from flask import Flask
+from datetime import datetime
 
-from .debug_info import get_debug_info_helper
-from .utils import DebugHelper
+from .debug_saver import get_debug_saver_helper
+from .debugger import DebugHelper
+
+class DebugEntry(object):
+    
+    @classmethod
+    def init_app(cls, app):
+        debug_app = create_debug_app(app)
+        debug_app.register_break_entry()
+ 
 
 class AppDebugBase(object):
     
     def __init__(self, app):
         self.app = app
-        self.debug_helper = DebugHelper(include_dirs=[os.getcwd()])
+        self.saver_helper = get_debug_saver_helper()
+        self.debug_helper = DebugHelper(include_dirs=[os.getcwd()], saver_helper=self.saver_helper)
         
     def get_app_routes(self):
         raise NotImplementedError()
         
-    def get_matched_break(self):
+    def get_matched_break(self, request, break_list):
         raise NotImplementedError()
         
     def register_break_entry(self):
@@ -40,7 +50,8 @@ class FlaskDebug(AppDebugBase):
         request_route = request.path[:-1] if request.path.endswith('/') else request.path
         match_break_info = None
         for break_info in break_list:
-            if break_info.get('type') != 'flask' or break_info.get('status') != 'tobreak':
+            if break_info.get('type') != 'flask' or \
+               (break_info.get('sn_list') and len(break_info['sn_list']) > break_info['sn_limit']):
                 continue
             route = break_info['route']
             route = route[:-1] if route.endswith('/') else route
@@ -65,21 +76,21 @@ class FlaskDebug(AppDebugBase):
         def before_request_proc():
             from flask import current_app, request
             try:
-                debug_info_helper = get_debug_info_helper()
-                if debug_info_helper:
-                    debug_info = debug_info_helper.get_debug_info()
+                if self.saver_helper:
+                    debug_info = self.saver_helper.get_debug_info()
                     break_list = debug_info.get('breaks') or []
                     break_info = self.get_matched_break(request, break_list)
-                    if break_info and break_info.get('status') == 'tobreak':
-                        break_info['status'] = 'breaked'
-                        debug_info_helper.save_debug_info(debug_info)
+                    if break_info and (not break_info.get('sn_list') or len(break_info['sn_list']) <= break_info['sn_limit']):
+                        sn = f'{datetime.now().strftime("%Y%m%d%H%M%S")}_{str(uuid.uuid1()).replace('-', '')[:4]}' 
+                        break_info['sn_list'].append(sn)
+                        self.saver_helper.save_debug_info(debug_info)
                         
                         until_info = self.get_tobreak_info(request)
 
                         listen_port = self.debug_helper.get_listen_port()
-                        process = multiprocessing.Process(target=self.conn_to_debugger_proc, args=(self.debug_helper, listen_port, None, until_info))
+                        process = multiprocessing.Process(target=self.conn_to_debugger_proc, args=(self.debug_helper, sn, listen_port, None, until_info))
                         process.daemon = True
-                        process.start()
+                        #process.start()
                         self.debug_helper.listen_in_port(listen_port)
             except Exception as e:
                 current_app.logger.error(f'flask api dynamic error: {e}')
@@ -87,7 +98,7 @@ class FlaskDebug(AppDebugBase):
         self.app.before_request(before_request_proc)
         
     @staticmethod
-    def conn_to_debugger_proc(debug_helper, conn_port, end_condition, until_info=None):
+    def conn_to_debugger_proc(debug_helper, sn, conn_port, end_condition, until_info=None):
         for i in range(3):
             try:
                 debug_helper.conn_to_port(conn_port)
@@ -102,9 +113,8 @@ class FlaskDebug(AppDebugBase):
             debug_helper.exec_cmd_resp(f'b current_app.view_functions["{break_endpoint}"]')
             debug_helper.exec_cmd_resp(b'continue')
         try:
-            debug_helper.step_by_step(end_condition=end_condition)
+            debug_helper.step_by_step(sn=sn, end_condition=end_condition)
         except Exception as e:
-            import pdb;pdb.set_trace()
             print(e)
 
 class FastApiDebug(AppDebugBase):
@@ -120,8 +130,10 @@ def create_debug_app(app):
     return debug_app
 
 if __name__ == '__main__':
+    from src.debug.debug_saver import get_debug_saver_helper
     FlaskDebug.conn_to_debugger_proc(
-        DebugHelper(include_dirs=[os.getcwd()]),
+        DebugHelper(include_dirs=[os.getcwd()], saver_helper=get_debug_saver_helper()),
+        'aabbccdd',
         55188, #port
         None, #end_condition
         until_info={'endpoint': 'process_endpoint'}

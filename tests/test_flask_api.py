@@ -1,6 +1,6 @@
 import os
 from flask import Flask, jsonify, request
-from src.debug.debugger import DebugEntry
+from src.debug.debug_apps import DebugEntry
 
 app = Flask(__name__)
 DebugEntry.init_app(app)
@@ -27,19 +27,19 @@ def update_redis_info(debug_info_uri):
     client = redis.StrictRedis.from_url(debug_info_uri)
 
     debug_info = {
-        'source_dir': '/process',
         'breaks': [{
             'type': 'flask',
             'route': '/process',
-            'status': 'tobreak', # tobreak/breaked
             'match_func': ['lambda x: True'],
+            'sn_limit': 30,
+            'sn_list': [],
         }, {
             'type': 'celery',
             'route': '',
-            'status': 'tobreak', # tobreak/breaked
             'match_func': ['lambda x: True'],
+            'sn_limit': 30,
+            'sn_list': [],
         }],
-        'logs': []
     }
     try:
         client.set('DEBUG_INFO', json.dumps(debug_info))
