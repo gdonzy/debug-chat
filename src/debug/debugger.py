@@ -12,7 +12,7 @@ from .code_proc import get_py_lno_vars_map
 class DebugHelper(object):
     bt_lineinfo_pattern = re.compile(r'^>?\s*(.+)\((\d+)\)(.+)\(')
     
-    def __init__(self, host='127.0.0.1', port=None, include_dirs=None, exclude_dirs=None, saver_helper=None):
+    def __init__(self, host='127.0.0.1', port=None, include_dirs=None, exclude_dirs=None):
         """
         port：如果传入，则使用传入的，如果没有传入，则使用随机端口
         """
@@ -25,7 +25,6 @@ class DebugHelper(object):
         self.exclude_dirs = exclude_dirs or []
         self.retval_list = []
         self.fn_lno_vars = {}
-        self.saver_helper = saver_helper
     
     def get_listen_port(self):
         if self.port:
@@ -137,7 +136,7 @@ class DebugHelper(object):
                 locals[var_] = val_
         return locals
 
-    def step_by_step(self, sn=None, end_condition=None):
+    def step_by_step(self, debug_saver, sn, end_condition=None):
         self.last_fn, self.last_lno, self.last_func = None, None, None
         self.fn, self.lno, self.func = self.get_lineinfo_by_lelvel(level=0)
         self.entry_fn = self.fn
@@ -179,5 +178,5 @@ class DebugHelper(object):
             self.exec_cmd_resp(b's\n')
             
         pprint(self.logs)
-        self.saver_helper.update_debug_logs(sn, self.logs)
+        debug_saver.update_debug_logs(sn, self.logs)
         self.exec_cmd(b'continue\n')

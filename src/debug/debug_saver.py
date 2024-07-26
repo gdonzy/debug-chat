@@ -64,5 +64,5 @@ def get_debug_saver_helper(uri=None):
     return debug_saver_helper
 
 if __name__ == '__main__':
-    dh = get_debug_saver_helper(uri='')
+    ds = get_debug_saver_helper(uri='')
 

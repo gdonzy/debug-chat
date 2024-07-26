@@ -22,7 +22,7 @@ class AppDebugBase(object):
     def __init__(self, app):
         self.app = app
         self.saver_helper = get_debug_saver_helper()
-        self.debug_helper = DebugHelper(include_dirs=[os.getcwd()], saver_helper=self.saver_helper)
+        self.debug_helper = DebugHelper(include_dirs=[os.getcwd()])
         
     def get_app_routes(self):
         raise NotImplementedError()
@@ -90,15 +90,17 @@ class FlaskDebug(AppDebugBase):
                         listen_port = self.debug_helper.get_listen_port()
                         process = multiprocessing.Process(target=self.conn_to_debugger_proc, args=(self.debug_helper, sn, listen_port, None, until_info))
                         process.daemon = True
-                        #process.start()
+                        process.start()
                         self.debug_helper.listen_in_port(listen_port)
             except Exception as e:
+                import traceback;traceback.print_exc()
                 current_app.logger.error(f'flask api dynamic error: {e}')
 
         self.app.before_request(before_request_proc)
         
     @staticmethod
     def conn_to_debugger_proc(debug_helper, sn, conn_port, end_condition, until_info=None):
+        debug_saver = get_debug_saver_helper()
         for i in range(3):
             try:
                 debug_helper.conn_to_port(conn_port)
@@ -113,7 +115,7 @@ class FlaskDebug(AppDebugBase):
             debug_helper.exec_cmd_resp(f'b current_app.view_functions["{break_endpoint}"]')
             debug_helper.exec_cmd_resp(b'continue')
         try:
-            debug_helper.step_by_step(sn=sn, end_condition=end_condition)
+            debug_helper.step_by_step(debug_saver=debug_saver, sn=sn, end_condition=end_condition)
         except Exception as e:
             print(e)
 
@@ -132,7 +134,7 @@ def create_debug_app(app):
 if __name__ == '__main__':
     from src.debug.debug_saver import get_debug_saver_helper
     FlaskDebug.conn_to_debugger_proc(
-        DebugHelper(include_dirs=[os.getcwd()], saver_helper=get_debug_saver_helper()),
+        DebugHelper(include_dirs=[os.getcwd()]),
         'aabbccdd',
         55188, #port
         None, #end_condition
